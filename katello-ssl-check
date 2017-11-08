@@ -1,0 +1,82 @@
+#!/usr/bin/env ruby
+
+require 'openssl'
+require 'colorize'
+
+# define CA paths
+
+@katello_default_ca = '/etc/pki/katello/certs/katello-default-ca.crt'
+@katello_server_ca =  '/etc/pki/katello/certs/katello-default-ca.crt'
+@puppet_ca =          '/var/lib/puppet/ssl/certs/ca.pem'
+
+# set FQDN to variable
+
+fqdn = `hostname -f`.chomp
+
+# define SSL cert paths
+
+@certs = [
+    '/etc/pki/katello/qpid_router_client.crt',
+    '/etc/pki/katello/qpid_router_server.crt',
+    '/etc/pki/katello/qpid_client_striped.crt',
+    '/etc/pki/katello/certs/java-client.crt',
+    '/etc/pki/katello/certs/katello-apache.crt',
+    '/etc/pki/katello/certs/pulp-client.crt',
+    '/etc/foreman-proxy/ssl_cert.pem',
+    "/etc/pki/katello/certs/#{fqdn}-qpid-broker.crt"
+]
+
+# SSL checks
+
+def ssl_check
+  @certs.each do |cert|
+  puts "Checking the following cert #{cert}"
+  sleep 1
+  `openssl verify -CAfile #{@katello_default_ca} #{cert}`
+  if $?.success?
+     puts "SSL cert looks good".green
+     sleep 1
+  elsif $?.success? == false
+   `openssl verify -CAfile #{@katello_default_ca} #{cert}`
+        puts "SSL cert looks good".green
+        sleep 1
+  else puts "There is an issue with the SSL certs on this satellite".red
+  sleep 1
+  end
+  end
+end
+
+def puppet_certs_check
+  Dir.glob('/var/lib/puppet/ssl/certs/*.pem') do |cert|
+  puts "Checking the following cert #{cert} against #{@puppet_ca}"
+  sleep 1
+  `openssl verify -CAfile #{@puppet_ca} #{cert}`
+  if $?.success?
+     puts "SSL cert looks good".green
+     sleep 1
+  else puts "There is an issue with the Puppet SSL certs on this satellite".red
+     sleep 1
+   end
+  end
+ end
+
+# check to see if custom certs are used
+
+hash1 = `md5sum /etc/pki/katello/certs/katello-default-ca.crt | awk '{ print $1 }'`.chomp
+hash2 = `md5sum /etc/pki/katello/certs/katello-server-ca.crt | awk '{ print $1 }'`.chomp
+
+if hash1 == hash2
+  puts "Using default SSL certs from the installer, proceeding with check"
+  sleep 1
+  puts "\nChecking normal SSL".red
+  ssl_check
+  puts "\nChecking Puppet SSL".red
+  puppet_certs_check
+else
+  puts "Using custom SSL certs, proceeding with check"
+  sleep 1
+  puts "\nChecking normal SSL".red
+  ssl_check
+  puts "\nChecking Puppet SSL".red
+  puppet_certs_check
+end
